@@ -169,3 +169,6 @@ media
 # IPython
 profile_default/
 ipython_config.py
+
+# Proyect
+test.*
