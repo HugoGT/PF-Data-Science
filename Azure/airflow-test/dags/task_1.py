@@ -1,20 +1,31 @@
 # Primera tarea de Airflow
 
 import random
-
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.models import Variable
-from azure.storage.blob import BlobServiceClient
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-from geopy.extra.rate_limiter import RateLimiter
-from geopy.geocoders import Nominatim
+
 import pandas as pd
 import psycopg2
 import requests
 
-from keys import PGHOST, PGUSER, PGPORT, PGDATABASE, PGPASSWORD
+from airflow import DAG
+from airflow.models import Variable
+from airflow.operators.python import PythonOperator
+from azure.storage.blob import BlobServiceClient
+from bs4 import BeautifulSoup
+from geopy.extra.rate_limiter import RateLimiter
+from geopy.geocoders import Nominatim
+
+from keys import (
+    PGHOST,
+    PGUSER,
+    PGPORT,
+    PGDATABASE,
+    PGPASSWORD,
+    AZURE_STORAGE_NAME,
+    AZURE_STORAGE_KEY,
+    AZURE_CONTAINER_NAME,
+    AZURE_BLOB_NAME
+)
 
 
 # Datos de conexión a PostgreSQL
@@ -25,10 +36,10 @@ pg_database = PGDATABASE
 pg_password = PGPASSWORD
 
 # Datos de conexión al datalake
-storage_account_name = 'sismosperudatalake'
-storage_account_key = 'V2RwW/JC5ls4NY74z5Hnr5OlYL+HwQQM0GjKY/kxaRPHmE14AafD3QJV8wYSoPkWE9WnvsaQY4mA+AStVsZ0Ww=='
-container_name = 'data'
-blob_name = 'sismos_peru_con_ubicacion.csv'
+storage_account_name = AZURE_STORAGE_NAME
+storage_account_key = AZURE_STORAGE_KEY
+container_name = AZURE_CONTAINER_NAME
+blob_name = AZURE_BLOB_NAME
 
 
 def combinar_coordenadas(row):
@@ -37,21 +48,6 @@ def combinar_coordenadas(row):
     coordenadas = f'{latitud},{longitud}'
 
     return coordenadas
-
-
-def read_data_from_datalake():
-    # Conexión al datalake
-    blob_service_client = BlobServiceClient(
-        account_url=f"https://{storage_account_name}.blob.core.windows.net", credential=storage_account_key)
-    container_client = blob_service_client.get_container_client(container_name)
-    blob_client = container_client.get_blob_client(blob_name)
-
-    # Leer los datos del datalake
-    data = blob_client.download_blob().readall()
-
-    # Aquí puedes realizar transformaciones en los datos si es necesario
-
-    return data
 
 
 def extraer_data():
@@ -88,15 +84,15 @@ def extraer_data():
         'profundidad (km)': profundidades,
         'magnitud (M)': magnitudes
     }
+
     Variable.set('data', data)
 
 
-def convertir_data():
-    # Recibiendo y convirtiendo el dato
+def subir_data():
+    # Obtener data extraída
     data = Variable.get('data')
     df = pd.DataFrame(data)
 
-    # Conversiones
     # Cambio el formato de Fecha
     df[['fecha UTC', 'hora UTC']] = df['fecha UTC'].str.split(' ', 1, expand=True)
     # Convertir la columna 'Fecha' a tipo datetime
@@ -124,7 +120,7 @@ def convertir_data():
     for item in ubicacion:
         if item == None:
             paises.append('Perú')
-            departamentos.append('Mar peruano')
+            departamentos.append('Mar peru')
             provincias.append(None)
         else:
             address = item.raw['address']
@@ -159,12 +155,24 @@ def convertir_data():
     df['estado'] = df['estado'].fillna('Mar peruano')
     df['ciudad'] = df['ciudad'].fillna('Sin dato')
 
-    Variable.set('data', df)
+    # Preparar la consulta SQL de inserción
+    insert_query = "INSERT INTO sismos (id_sismo, fecha, hora, latitud, longitud, profundidad, magnitud, pais, estado) VALUES\n"
+    values_query = []
 
+    for index, row in df.iterrows():
+        fecha = row[0]
+        hora = row[1]
+        latitud = row[2]
+        longitud = row[3]
+        profundidad = row[4]
+        magnitud = row[5]
+        pais = row[6]
+        estado = row[7]
 
-def load_data_to_postgresql():
-    # Insertar o actualizar los datos en PostgreSQL
-    data = Variable.get('data')
+        values = f"({index + 44978}, '{fecha}', '{hora}', {latitud}, {longitud}, {profundidad}, {magnitud}, '{pais}', '{estado}'),\n"
+        values_query.append(values)
+
+    query = insert_query + ''.join(values_query)[:-2] + ";"
 
     # Conexión a PostgreSQL
     conn = psycopg2.connect(
@@ -176,29 +184,11 @@ def load_data_to_postgresql():
     )
     cursor = conn.cursor()
 
-    # Preparar la consulta SQL de inserción
-    insert_query = "INSERT INTO sismos (Fecha, Hora, Profundidad, Magnitud, Id_lugar, Id_tsunami, Id_danio) VALUES\n"
-    values_query = []
-
-    for index, row in data.iterrows():
-        fecha = row[0]
-        hora = row[1]
-        profundidad = row[4]
-        magnitud = row[5]
-        id_lugar = random.randint(1, 100000000)
-        id_tsunami = random.randint(1, 100000000)
-        id_danio = random.randint(1, 100000000)
-
-        values = f"('{fecha}', '{hora}', {profundidad}, {magnitud}, {id_lugar}, {id_tsunami}, {id_danio}),\n"
-        values_query.append(values)
-
-    query = insert_query + ''.join(values_query)[:-2] + ";"
-
     # Ejecutar la consulta de inserción
     cursor.execute(query)
+    conn.commit()
 
     # Cerrar la conexión a PostgreSQL
-    conn.commit()
     cursor.close()
     conn.close()
 
@@ -217,27 +207,16 @@ default_args = {
 with DAG(
     'datalake_to_postgresql',
     default_args=default_args,
-    start_date=datetime.now(),
-    schedule=timedelta(minutes=2)
+    start_date=datetime.now() - timedelta(minutes=5),
+    schedule='*/5 * * * *'
 ) as dag:
     extract_task = PythonOperator(
         task_id='extraer_data',
         python_callable=extraer_data
     )
-    convert_task = PythonOperator(
-        task_id='convertir_data',
-        python_callable=convertir_data
-    )
     load_task = PythonOperator(
-        task_id='load_data_to_postgresql',
-        python_callable=load_data_to_postgresql
+        task_id='subir_data',
+        python_callable=subir_data
     )
 
-    extract_task >> convert_task >> load_task
-
-# Definir tareas en el DAG
-# read_task = PythonOperator(
-#     task_id='read_data_from_datalake',
-#     python_callable=read_data_from_datalake,
-#     dag=dag
-# )
+    extract_task >> load_task
