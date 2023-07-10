@@ -1,6 +1,5 @@
 # Primera tarea de Airflow
 
-import random
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -88,9 +87,9 @@ def extraer_data():
     Variable.set('data', data)
 
 
-def subir_data():
+def transformar_data():
     # Obtener data extraída
-    data = Variable.get('data')
+    data = eval(Variable.get('data'))
     df = pd.DataFrame(data)
 
     # Cambio el formato de Fecha
@@ -115,24 +114,20 @@ def subir_data():
 
     paises = []
     departamentos = []
-    provincias = []
 
     for item in ubicacion:
         if item == None:
             paises.append('Perú')
-            departamentos.append('Mar peru')
-            provincias.append(None)
+            departamentos.append('Mar peruano')
         else:
             address = item.raw['address']
 
             paises.append(address.get('country'))
             departamentos.append(address.get('state'))
-            provincias.append(address.get('region'))
 
     # Agrego los datos al df
     df['pais'] = paises
     df['departamento'] = departamentos
-    df['provincia'] = provincias
 
     # Renombro columnas
     df = df.rename(columns={
@@ -142,8 +137,7 @@ def subir_data():
         'longitud (º)': 'longitud',
         'profundidad (km)': 'profundidad',
         'magnitud (M)': 'magnitud',
-        'departamento': 'estado',
-        'provincia': 'ciudad'
+        'departamento': 'estado'
     })
 
     # Cambio formatos
@@ -153,10 +147,9 @@ def subir_data():
 
     # Relleno nulos
     df['estado'] = df['estado'].fillna('Mar peruano')
-    df['ciudad'] = df['ciudad'].fillna('Sin dato')
 
     # Preparar la consulta SQL de inserción
-    insert_query = "INSERT INTO sismos (id_sismo, fecha, hora, latitud, longitud, profundidad, magnitud, pais, estado) VALUES\n"
+    insert_query = "INSERT INTO sismos (fecha, hora, latitud, longitud, profundidad, magnitud, pais, estado) VALUES\n"
     values_query = []
 
     for index, row in df.iterrows():
@@ -169,10 +162,17 @@ def subir_data():
         pais = row[6]
         estado = row[7]
 
-        values = f"({index + 44978}, '{fecha}', '{hora}', {latitud}, {longitud}, {profundidad}, {magnitud}, '{pais}', '{estado}'),\n"
+        values = f"('{fecha}', '{hora}', {latitud}, {longitud}, {profundidad}, {magnitud}, '{pais}', '{estado}'),\n"
         values_query.append(values)
 
     query = insert_query + ''.join(values_query)[:-2] + ";"
+
+    Variable.set('query', query)
+
+
+def subir_data():
+    # Recibir la query a subir
+    query = Variable.get('query')
 
     # Conexión a PostgreSQL
     conn = psycopg2.connect(
@@ -197,26 +197,29 @@ def subir_data():
 default_args = {
     'owner': 'Hugo',
     'depends_on_past': False,
-    'email': ['gthugo@outlook.com'],
-    'email_on_failure': True,
+    'email_on_failure': False,
     'retries': 3,
     'retry_delay': timedelta(minutes=5),
-    'catchup': False,
+    'max_active_runs': 1
 }
 
 with DAG(
     'datalake_to_postgresql',
     default_args=default_args,
-    start_date=datetime.now() - timedelta(minutes=5),
-    schedule='*/5 * * * *'
+    start_date=datetime.now() - timedelta(hours=1, minutes=30),
+    schedule='0 * * * *'
 ) as dag:
     extract_task = PythonOperator(
         task_id='extraer_data',
         python_callable=extraer_data
+    )
+    transform_task = PythonOperator(
+        task_id='transformar_data',
+        python_callable=transformar_data
     )
     load_task = PythonOperator(
         task_id='subir_data',
         python_callable=subir_data
     )
 
-    extract_task >> load_task
+    extract_task >> transform_task >> load_task

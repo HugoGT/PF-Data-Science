@@ -1,3 +1,5 @@
+# Ejemplo de lo que va en el archivo keys.py
+
 PGHOST = '{your-database}.database.azure.com'
 PGUSER = 'admin'
 PGPORT = 5432
