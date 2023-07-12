@@ -9,7 +9,6 @@ import requests
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
-from azure.storage.blob import BlobServiceClient
 from bs4 import BeautifulSoup
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.geocoders import Nominatim
@@ -42,11 +41,38 @@ blob_name = AZURE_BLOB_NAME
 
 
 def combinar_coordenadas(row):
-    latitud = row['latitud (º)']
-    longitud = row['longitud (º)']
-    coordenadas = f'{latitud},{longitud}'
+    latitud = row['latitud']
+    longitud = row['longitud']
 
-    return coordenadas
+    return f'{latitud},{longitud}'
+
+
+def obtener_ultima_fila():
+    # Conexión a PostgreSQL
+    conn = psycopg2.connect(
+        host=pg_host,
+        port=pg_port,
+        database=pg_database,
+        user=pg_user,
+        password=pg_password
+    )
+    cursor = conn.cursor()
+
+    # Ejecutar la consulta
+    consulta = "SELECT * FROM sismos ORDER BY id_sismo DESC LIMIT 1"
+    cursor.execute(consulta)
+
+    # Obtener la última fila de resultados
+    ultima_fila = cursor.fetchone()
+
+    # Cerrar la conexión a PostgreSQL
+    cursor.close()
+    conn.close()
+
+    ultima_fila = [str(i) for i in ultima_fila][:-3]
+    ultima_fila = ultima_fila[:2] + [float(i) for i in ultima_fila[2:]]
+
+    return ultima_fila
 
 
 def extraer_data():
@@ -75,13 +101,13 @@ def extraer_data():
         profundidades.append(celdas[4].text.strip())
         magnitudes.append(celdas[3].text.strip())
 
-    # Crear el DataFrame usando las listas de datos
+    # Crear el Diccionario usando las listas de datos
     data = {
-        'fecha UTC': fechas,
-        'latitud (º)': latitudes,
-        'longitud (º)': longitudes,
-        'profundidad (km)': profundidades,
-        'magnitud (M)': magnitudes
+        'fecha': fechas,
+        'latitud': latitudes,
+        'longitud': longitudes,
+        'profundidad': profundidades,
+        'magnitud': magnitudes
     }
 
     Variable.set('data', data)
@@ -89,61 +115,65 @@ def extraer_data():
 
 def transformar_data():
     # Obtener data extraída
+    ultima_fila = eval(Variable.get('last_row'))
+
+    # Si no existe la variable en Airflow se crea una
+    if ultima_fila == []:
+        ultima_fila = obtener_ultima_fila()
+        Variable.set('last_row', ultima_fila)
+
     data = eval(Variable.get('data'))
     df = pd.DataFrame(data)
 
     # Cambio el formato de Fecha
-    df[['fecha UTC', 'hora UTC']] = df['fecha UTC'].str.split(' ', 1, expand=True)
+    df[['fecha', 'hora']] = df['fecha'].str.split(' ', 1, expand=True)
     # Convertir la columna 'Fecha' a tipo datetime
-    df['fecha UTC'] = pd.to_datetime(df['fecha UTC'], format='%d-%b-%Y')
-    # Cambiar el formato de la fecha a "02/07/2023"
-    df['fecha UTC'] = df['fecha UTC'].dt.strftime('%d/%m/%Y')
+    df['fecha'] = pd.to_datetime(df['fecha'], format='%d-%b-%Y')
     # Reordenar las columnas
-    df = df[['fecha UTC', 'hora UTC', 'latitud (º)', 'longitud (º)', 'profundidad (km)', 'magnitud (M)']]
+    df = df[['fecha', 'hora', 'latitud', 'longitud', 'profundidad', 'magnitud']]
+    # Convertir tipos de datos
+    df['fecha'] = df['fecha'].astype(str)
+    df['profundidad'] = df['profundidad'].astype(int)
+    df[['latitud', 'longitud', 'magnitud']] = df[['latitud', 'longitud', 'magnitud']].astype(float)
+
+    # Comprobar datos faltantes
+    for index, row in df.iterrows():
+        if row.tolist() == ultima_fila:
+            df = df.iloc[:index]
+            break
+
+    if df.empty:
+        return Variable.set('query', ' ')
+
+    Variable.set('last_row', df.iloc[0].tolist())
 
     # Conversiones ETL perú
     geolocator = Nominatim(user_agent="test", timeout=4)
     geocode = RateLimiter(geolocator.geocode, min_delay_seconds=2)
 
     # Aplica la función a cada fila del DataFrame y crea la nueva columna
-    coordenadas = df.apply(combinar_coordenadas, axis=1).to_list()
+    coordenadas = df.apply(combinar_coordenadas, axis=1).tolist()
 
     ubicacion = []
     for u in coordenadas:
         ubicacion.append(geolocator.reverse(u))
 
     paises = []
-    departamentos = []
+    estados = []
 
     for item in ubicacion:
         if item == None:
             paises.append('Perú')
-            departamentos.append('Mar peruano')
+            estados.append('Mar peruano')
         else:
             address = item.raw['address']
 
             paises.append(address.get('country'))
-            departamentos.append(address.get('state'))
+            estados.append(address.get('state'))
 
     # Agrego los datos al df
     df['pais'] = paises
-    df['departamento'] = departamentos
-
-    # Renombro columnas
-    df = df.rename(columns={
-        'fecha UTC': 'fecha',
-        'hora UTC': 'hora',
-        'latitud (º)': 'latitud',
-        'longitud (º)': 'longitud',
-        'profundidad (km)': 'profundidad',
-        'magnitud (M)': 'magnitud',
-        'departamento': 'estado'
-    })
-
-    # Cambio formatos
-    df['fecha'] = pd.to_datetime(df['fecha'], format='%d/%m/%Y')
-    df['fecha'] = df['fecha'].dt.strftime('%Y-%m-%d')
-    df['hora'] = df['hora'].apply(lambda x: x.split('.')[0])
+    df['estado'] = estados
 
     # Relleno nulos
     df['estado'] = df['estado'].fillna('Mar peruano')
@@ -152,7 +182,7 @@ def transformar_data():
     insert_query = "INSERT INTO sismos (fecha, hora, latitud, longitud, profundidad, magnitud, pais, estado) VALUES\n"
     values_query = []
 
-    for index, row in df.iterrows():
+    for index, row in df[::-1].iterrows():
         fecha = row[0]
         hora = row[1]
         latitud = row[2]
@@ -172,7 +202,11 @@ def transformar_data():
 
 def subir_data():
     # Recibir la query a subir
-    query = Variable.get('query')
+    query = Variable.get('query', ' ')
+
+    # Si no hay query es porque no hay datos nuevos
+    if query == ' ':
+        return print('No hay nada que añadir')
 
     # Conexión a PostgreSQL
     conn = psycopg2.connect(
@@ -206,7 +240,7 @@ default_args = {
 with DAG(
     'datalake_to_postgresql',
     default_args=default_args,
-    start_date=datetime.now() - timedelta(hours=1, minutes=30),
+    start_date=datetime.now() - timedelta(hours=6),
     schedule='0 * * * *'
 ) as dag:
     extract_task = PythonOperator(
