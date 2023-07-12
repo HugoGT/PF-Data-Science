@@ -34,6 +34,35 @@ container_name = AZURE_CONTAINER_NAME
 blob_name = AZURE_BLOB_NAME
 
 
+def insercion_postgres(querys):
+    try:
+        # Conexión a PostgreSQL
+        conn = psycopg2.connect(
+            host=pg_host,
+            port=pg_port,
+            database=pg_database,
+            user=pg_user,
+            password=pg_password
+        )
+        cursor = conn.cursor()
+
+        # Ejecutar las consultas de inserción
+        for query in querys:
+            cursor.execute(query)
+
+        # Confirmar los cambios en la base de datos
+        conn.commit()
+
+        # Cerrar la conexión y el cursor
+        cursor.close()
+        conn.close()
+
+        print("Se ejecutaron las sentencias correctamente")
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error al ejecutar la inserción en PostgreSQL:", error)
+
+
 def read_data_from_datalake(blob_name):
     connection_string = f"DefaultEndpointsProtocol=https;AccountName={storage_account_name};AccountKey={storage_account_key};EndpointSuffix=core.windows.net"
     blob_service_client = BlobServiceClient.from_connection_string(connection_string)
@@ -47,63 +76,60 @@ def read_data_from_datalake(blob_name):
 
 def load_daños():
     # Insertar o actualizar los datos en PostgreSQL
-    data = read_data_from_datalake("daños_final.csv")
+    data = read_data_from_datalake("tabla_daños.csv")
     data.drop_duplicates(subset='id_danio', inplace=True)
+    data['desaparecidos'] = data['desaparecidos'].astype(int)
 
-    # Conexión a PostgreSQL
-    conn = psycopg2.connect(
-        host=pg_host,
-        port=pg_port,
-        database=pg_database,
-        user=pg_user,
-        password=pg_password
-    )
-    cursor = conn.cursor()
+    create_table = """DROP TABLE IF EXISTS danios;
+                        CREATE TABLE danios(
+                        id_danio SERIAL PRIMARY KEY,
+                        fecha DATE,
+                        afectados INT,
+                        fallecidos INT,
+                        desaparecidos INT,
+                        heridos INT,
+                        viviendas_destruidas INT,
+                        viviendas_afectadas INT,
+                        id_sismo INT,
+                        id_lugar INT
+                        );"""
 
     # Preparar la consulta SQL de inserción
-    insert_query = "INSERT INTO danios (id_danio, fecha, estado, afectados, desaparecidos, heridos, viv_destr, viv_afect, id_sismo) VALUES\n"
+    insert_query = "INSERT INTO danios (id_danio, fecha, afectados, fallecidos, desaparecidos, heridos, viviendas_destruidas, viviendas_afectadas, id_sismo, id_lugar) VALUES\n"
     values_query = []
 
     for index, row in data.iterrows():
         id_danio = row[0]
         fecha = row[1]
-        estado = row[2]
-        afectados = row[3]
+        afectados = row[2]
+        fallecidos = row[3]
         desaparecidos = row[4]
         heridos = row[5]
         viv_destr = row[6]
         viv_afect = row[7]
         id_sismo = row[8]
-        values = f"({id_danio}, '{fecha}', '{estado}', {afectados}, {desaparecidos}, {heridos}, {viv_destr}, {viv_afect}, {id_sismo}),\n"
+        id_lugar = row[9]
+        values = f"({id_danio}, '{fecha}', {afectados}, {fallecidos}, {desaparecidos}, {heridos}, {viv_destr}, {viv_afect}, {id_sismo}, {id_lugar}),\n"
         values_query.append(values)
 
     query = insert_query + ''.join(values_query)[:-2] + ";"
 
-    # Ejecutar la consulta de inserción
-    cursor.execute(query)
-
-    # Cerrar la conexión a PostgreSQL
-    conn.commit()
-    cursor.close()
-    conn.close()
+    insercion_postgres([create_table, query])
 
 
 def load_lugar():
     # Insertar o actualizar los datos en PostgreSQL
-    data = read_data_from_datalake("lugar.csv")
+    data = read_data_from_datalake("tabla_lugar.csv")
 
-    # Conexión a PostgreSQL
-    conn = psycopg2.connect(
-        host=pg_host,
-        port=pg_port,
-        database=pg_database,
-        user=pg_user,
-        password=pg_password
-    )
-    cursor = conn.cursor()
+    create_table = """DROP TABLE IF EXISTS lugares;
+                        CREATE TABLE lugares(
+                        id_lugar SERIAL PRIMARY KEY,
+                        pais VARCHAR(50),
+                        estado VARCHAR(50)
+                        );"""
 
     # Preparar la consulta SQL de inserción
-    insert_query = "INSERT INTO lugar (id_lugar, pais, estado) VALUES\n"
+    insert_query = "INSERT INTO lugares (id_lugar, pais, estado) VALUES\n"
     values_query = []
 
     for index, row in data.iterrows():
@@ -115,31 +141,25 @@ def load_lugar():
 
     query = insert_query + ''.join(values_query)[:-2] + ";"
 
-    # Ejecutar la consulta de inserción
-    cursor.execute(query)
-
-    # Cerrar la conexión a PostgreSQL
-    conn.commit()
-    cursor.close()
-    conn.close()
+    insercion_postgres([create_table, query])
 
 
 def load_tsunamis():
     # Insertar o actualizar los datos en PostgreSQL
-    data = read_data_from_datalake("tsunamis.csv")
+    data = read_data_from_datalake("tabla_tsunamis.csv")
 
-    # Conexión a PostgreSQL
-    conn = psycopg2.connect(
-        host=pg_host,
-        port=pg_port,
-        database=pg_database,
-        user=pg_user,
-        password=pg_password
-    )
-    cursor = conn.cursor()
+    create_table = """DROP TABLE IF EXISTS tsunamis;
+                        CREATE TABLE tsunamis(
+                        id_tsunami SERIAL PRIMARY KEY,
+                        fecha DATE,
+                        hora TIME,
+                        altura_de_ola DECIMAL,
+                        id_sismo INT,
+                        id_lugar INT
+                        );"""
 
     # Preparar la consulta SQL de inserción
-    insert_query = "INSERT INTO tsunamis (id_tsunami, fecha, hora, max_water_height, id_sismo, estado, pais) VALUES\n"
+    insert_query = "INSERT INTO tsunamis (id_tsunami, fecha, hora, altura_de_ola, id_sismo, id_lugar) VALUES\n"
     values_query = []
 
     for index, row in data.iterrows():
@@ -148,38 +168,33 @@ def load_tsunamis():
         hora = row[2]
         max_water_height = row[3]
         id_sismo = row[4]
-        estado = row[5]
-        pais = row[6]
-        values = f"({id_tsunami}, '{fecha}', '{hora}', {max_water_height}, {id_sismo}, '{estado}', '{pais}'),\n"
+        id_lugar = row[5]
+        values = f"({id_tsunami}, '{fecha}', '{hora}', {max_water_height}, {id_sismo}, {id_lugar}),\n"
         values_query.append(values)
 
     query = insert_query + ''.join(values_query)[:-2] + ";"
 
-    # Ejecutar la consulta de inserción
-    cursor.execute(query)
-
-    # Cerrar la conexión a PostgreSQL
-    conn.commit()
-    cursor.close()
-    conn.close()
+    insercion_postgres([create_table, query])
 
 
 def load_sismos():
     # Insertar o actualizar los datos en PostgreSQL
-    data = read_data_from_datalake("sismos_completo.csv")
+    data = read_data_from_datalake("tabla_sismos.csv")
 
-    # Conexión a PostgreSQL
-    conn = psycopg2.connect(
-        host=pg_host,
-        port=pg_port,
-        database=pg_database,
-        user=pg_user,
-        password=pg_password
-    )
-    cursor = conn.cursor()
+    create_table = """DROP TABLE IF EXISTS sismos;
+                        CREATE TABLE sismos(
+                        id_sismo SERIAL PRIMARY KEY,
+                        fecha DATE,
+                        hora TIME,
+                        latitud DECIMAL,
+                        longitud DECIMAL,
+                        profundidad DECIMAL,
+                        magnitud DECIMAL,
+                        id_lugar INT
+                        );"""
 
     # Preparar la consulta SQL de inserción
-    insert_query = "INSERT INTO sismos (fecha, hora, latitud, longitud, profundidad, magnitud, pais, estado) VALUES\n"
+    insert_query = "INSERT INTO sismos (fecha, hora, latitud, longitud, profundidad, magnitud, id_lugar) VALUES\n"
     values_query = []
 
     for index, row in data.iterrows():
@@ -189,20 +204,13 @@ def load_sismos():
         longitud = row[4]
         profundidad = row[5]
         magnitud = row[6]
-        pais = row[7]
-        estado = row[8]
-        values = f"('{fecha}', '{hora}', {latitud}, {longitud}, {profundidad}, {magnitud}, '{pais}', '{estado}'),\n"
+        id_lugar = row[7]
+        values = f"('{fecha}', '{hora}', {latitud}, {longitud}, {profundidad}, {magnitud}, {id_lugar}),\n"
         values_query.append(values)
 
     query = insert_query + ''.join(values_query)[:-2] + ";"
 
-    # Ejecutar la consulta de inserción
-    cursor.execute(query)
-
-    # Cerrar la conexión a PostgreSQL
-    conn.commit()
-    cursor.close()
-    conn.close()
+    insercion_postgres([create_table, query])
 
 
 # Definir el DAG de Airflow
