@@ -1,11 +1,12 @@
-# Primera tarea de Airflow
+# Tarea de automatización, agregar sismo Airflow
 
 from datetime import datetime, timedelta
 
 import pandas as pd
 import psycopg2
 import requests
-
+import time
+import unidecode
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
@@ -40,6 +41,41 @@ container_name = AZURE_CONTAINER_NAME
 blob_name = AZURE_BLOB_NAME
 
 
+def consulta_postgres(query, fetch=False):
+    try:
+        # Conexión a PostgreSQL
+        conn = psycopg2.connect(
+            host=pg_host,
+            port=pg_port,
+            database=pg_database,
+            user=pg_user,
+            password=pg_password
+        )
+        cursor = conn.cursor()
+
+        # Ejecutar las consultas de inserción
+        cursor.execute(query)
+
+        if fetch == True:
+            # Obtener los resultados de la consulta
+            resultados = cursor.fetchall()
+            # Cerrar la conexión y el cursor
+            cursor.close()
+            conn.close()
+
+            return resultados
+
+        # Confirmar los cambios en la base de datos
+        conn.commit()
+
+        # Cerrar la conexión y el cursor
+        cursor.close()
+        conn.close()
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error al ejecutar la inserción en PostgreSQL:", error)
+
+
 def combinar_coordenadas(row):
     latitud = row['latitud']
     longitud = row['longitud']
@@ -48,31 +84,44 @@ def combinar_coordenadas(row):
 
 
 def obtener_ultima_fila():
-    # Conexión a PostgreSQL
-    conn = psycopg2.connect(
-        host=pg_host,
-        port=pg_port,
-        database=pg_database,
-        user=pg_user,
-        password=pg_password
-    )
-    cursor = conn.cursor()
+    query = "SELECT * FROM sismos ORDER BY id_sismo DESC LIMIT 1"
 
-    # Ejecutar la consulta
-    consulta = "SELECT * FROM sismos ORDER BY id_sismo DESC LIMIT 1"
-    cursor.execute(consulta)
+    ultima_fila = consulta_postgres(query, fetch=True)[0]
 
-    # Obtener la última fila de resultados
-    ultima_fila = cursor.fetchone()
-
-    # Cerrar la conexión a PostgreSQL
-    cursor.close()
-    conn.close()
-
-    ultima_fila = [str(i) for i in ultima_fila][:-3]
+    ultima_fila = [str(i) for i in ultima_fila][1:-1]
     ultima_fila = ultima_fila[:2] + [float(i) for i in ultima_fila[2:]]
 
     return ultima_fila
+
+
+def obtener_lugares():
+    query = "SELECT * FROM lugares"
+
+    lugares = consulta_postgres(query, fetch=True)
+
+    Variable.set('places', lugares)
+
+    return lugares
+
+
+def agregar_lugares_faltantes(df):
+    # Obtener estados y países únicos
+    df = df[['pais', 'estado']].drop_duplicates()
+
+    # Preparar la consulta SQL de inserción
+    insert_query = "INSERT INTO lugares(pais, estado) VALUES\n"
+    values_query = []
+
+    for index, row in df.iterrows():
+        pais = row[0]
+        estado = row[1]
+
+        values = f"('{pais}', '{estado}'),\n"
+        values_query.append(values)
+
+    query = insert_query + ''.join(values_query)[:-2] + ";"
+
+    consulta_postgres(query)
 
 
 def extraer_data():
@@ -115,15 +164,20 @@ def extraer_data():
 
 def transformar_data():
     # Obtener data extraída
-    ultima_fila = eval(Variable.get('last_row'))
+    lugares = eval(Variable.get('places', '[]'))
+    ultima_fila = eval(Variable.get('last_row', '[]'))
 
-    # Si no existe la variable en Airflow se crea una
+    # Si no existen las variable en Airflow se crean unas
     if ultima_fila == []:
         ultima_fila = obtener_ultima_fila()
         Variable.set('last_row', ultima_fila)
 
+    if lugares == []:
+        lugares = obtener_lugares()
+
     data = eval(Variable.get('data'))
     df = pd.DataFrame(data)
+    tabla_lugares = pd.DataFrame(lugares, columns=['id_lugar', 'pais', 'estado'])
 
     # Cambio el formato de Fecha
     df[['fecha', 'hora']] = df['fecha'].str.split(' ', 1, expand=True)
@@ -172,14 +226,29 @@ def transformar_data():
             estados.append(address.get('state'))
 
     # Agrego los datos al df
-    df['pais'] = paises
-    df['estado'] = estados
+    # Agrego los datos al df
+    df_id = pd.DataFrame({'pais': paises, 'estado': estados})
 
-    # Relleno nulos
-    df['estado'] = df['estado'].fillna('Mar peruano')
+    # Transformaciones
+    df_id['estado'] = df_id['estado'].fillna('Mar peruano')
+    df_id['estado'] = df_id['estado'].str.lower().str.title().apply(unidecode.unidecode)
+    df_id['pais'] = df_id['pais'].str.lower().str.title().apply(unidecode.unidecode)
+
+    df_lugares = df_id.merge(tabla_lugares, on=['pais', 'estado'], how='left')
+
+    registros_nulos = df_lugares[df_lugares['id_lugar'].isnull()]
+
+    if not registros_nulos.empty:
+        agregar_lugares_faltantes(registros_nulos)
+        time.sleep(10)
+        lugares = obtener_lugares()
+        tabla_lugares = pd.DataFrame(lugares, columns=['id_lugar', 'pais', 'estado'])
+        df_lugares = df_id.merge(tabla_lugares, on=['estado', 'pais'], how='left')
+
+    df['id_lugar'] = df_lugares['id_lugar']
 
     # Preparar la consulta SQL de inserción
-    insert_query = "INSERT INTO sismos (fecha, hora, latitud, longitud, profundidad, magnitud, pais, estado) VALUES\n"
+    insert_query = "INSERT INTO sismos (fecha, hora, latitud, longitud, profundidad, magnitud, id_lugar) VALUES\n"
     values_query = []
 
     for index, row in df[::-1].iterrows():
@@ -189,10 +258,9 @@ def transformar_data():
         longitud = row[3]
         profundidad = row[4]
         magnitud = row[5]
-        pais = row[6]
-        estado = row[7]
+        id_lugar = row[6]
 
-        values = f"('{fecha}', '{hora}', {latitud}, {longitud}, {profundidad}, {magnitud}, '{pais}', '{estado}'),\n"
+        values = f"('{fecha}', '{hora}', {latitud}, {longitud}, {profundidad}, {magnitud}, {id_lugar}),\n"
         values_query.append(values)
 
     query = insert_query + ''.join(values_query)[:-2] + ";"
@@ -208,23 +276,7 @@ def subir_data():
     if query == ' ':
         return print('No hay nada que añadir')
 
-    # Conexión a PostgreSQL
-    conn = psycopg2.connect(
-        host=pg_host,
-        port=pg_port,
-        database=pg_database,
-        user=pg_user,
-        password=pg_password
-    )
-    cursor = conn.cursor()
-
-    # Ejecutar la consulta de inserción
-    cursor.execute(query)
-    conn.commit()
-
-    # Cerrar la conexión a PostgreSQL
-    cursor.close()
-    conn.close()
+    consulta_postgres(query)
 
 
 # Definir el DAG de Airflow
@@ -238,9 +290,9 @@ default_args = {
 }
 
 with DAG(
-    'datalake_to_postgresql',
+    'agregar_sismos',
     default_args=default_args,
-    start_date=datetime.now() - timedelta(hours=6),
+    start_date=datetime.now() - timedelta(hours=2),
     schedule='0 * * * *'
 ) as dag:
     extract_task = PythonOperator(

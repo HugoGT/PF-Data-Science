@@ -1,12 +1,13 @@
 # Tarea que corre una vez antes de levantar todo airflow
 
 import pandas as pd
-import psycopg2
+from datetime import datetime, timedelta
 
+import psycopg2
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from azure.storage.blob import BlobServiceClient
-from datetime import datetime, timedelta
+
 
 from keys import (
     PGHOST,
@@ -129,14 +130,13 @@ def load_lugar():
                         );"""
 
     # Preparar la consulta SQL de inserción
-    insert_query = "INSERT INTO lugares (id_lugar, pais, estado) VALUES\n"
+    insert_query = "INSERT INTO lugares (pais, estado) VALUES\n"
     values_query = []
 
     for index, row in data.iterrows():
-        id_lugar = row[0]
         pais = row[1]
         estado = row[2]
-        values = f"({id_lugar}, '{pais}', '{estado}'),\n"
+        values = f"('{pais}', '{estado}'),\n"
         values_query.append(values)
 
     query = insert_query + ''.join(values_query)[:-2] + ";"
@@ -213,6 +213,18 @@ def load_sismos():
     insercion_postgres([create_table, query])
 
 
+def load_foreign_keys():
+    fk_sismos = """ALTER TABLE sismos
+                    ADD FOREIGN KEY (id_lugar) REFERENCES lugares(id_lugar);"""
+    fk_tsunamis = """ALTER TABLE tsunamis
+                    ADD FOREIGN KEY (id_sismo) REFERENCES sismos(id_sismo),
+                    ADD FOREIGN KEY (id_lugar) REFERENCES lugares(id_lugar);"""
+    fk_danios = """ALTER TABLE danios
+                    ADD FOREIGN KEY (id_sismo) REFERENCES sismos(id_sismo),
+                    ADD FOREIGN KEY (id_lugar) REFERENCES lugares(id_lugar);"""
+    insercion_postgres([fk_sismos, fk_tsunamis, fk_danios])
+
+
 # Definir el DAG de Airflow
 default_args = {
     'owner': 'Hugo',
@@ -247,5 +259,9 @@ with DAG(
         task_id='load_sismos',
         python_callable=load_sismos
     )
+    t5 = PythonOperator(
+        task_id='create_foreign_keys',
+        python_callable=load_foreign_keys
+    )
 
-    t1 >> t2 >> t3 >> t4
+    t1 >> t2 >> t3 >> t4 >> t5
