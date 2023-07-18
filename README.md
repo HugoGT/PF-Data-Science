@@ -1,4 +1,4 @@
-# **Proyecto Final Data Science - Sismos**
+# **Proyecto Final Data Science - Alerta Sismos**
 
 ![Logo empresa](./src/logo.jpg)
 
@@ -15,13 +15,13 @@
 
 ## **Introducción**
 
-Somos Evil Corp una consultora en gestion de desastres (CGD) en alianza con INDECI Instituto Nacional de Defensa de Perú, United States Geological Survey (USGS) y la Agencia Meteorológica de Japón (JMA). Estamos trabajando en un proyecto tri-nacional. Los objetivos de esta alianza son dos:
+Somos Evil Corp una consultora en gestion de desastres (CGD) en alianza con el Instituto Nacional de Defensa de Perú (INDECI), United States Geological Survey (USGS) y la Agencia Meteorológica de Japón (JMA). Estamos trabajando en un proyecto tri-nacional en el cual los objetivos son:
 
-En primer lugar, buscamos crear una base de datos depurada que contemple los datos de las tres naciones de forma estandarizada. Es de suma importancia contar con información estándar de todos los países involucrados para poder desarrollar un mecanismo de clasificación confiable.
+- En primer lugar, buscamos crear una base de datos depurada que contemple los datos de las tres naciones de forma estandarizada. Es de suma importancia contar con información estándar de todos los países involucrados para poder desarrollar un mecanismo de clasificación confiable.
 
-En segundo lugar, nos enfocaremos en implementar mecanismos de comunicación y alerta en las comunidades rurales. Es fundamental que el público pueda recibir información clara y comprensible sobre la ocurrencia de sismos y cualquier situación que represente un riesgo para la salud y la seguridad.
+- En segundo lugar, nos enfocaremos en implementar mecanismos de comunicación y alerta a las zonas afectadas por sismos. Es fundamental que el público pueda recibir información e instrucciones claras y comprensibles sobre la ocurrencia de sismos ya que es una situación que represente un riesgo para la salud y la seguridad.
 
-El enfoque principal de nuestro proyecto será implementar un sistema de alerta sísmica en las zonas rurales de Perú, ya que estas áreas suelen contar con una infraestructura de comunicación limitada, lo que las expone a un mayor riesgo en caso de sismos.
+El enfoque principal de nuestro proyecto será implementar, con la base de datos estandarizada, un sistema de alerta sísmica que será probado en el Perú, y de acuerdo al éxito poder exportar la alerta a los otros países de la alianza.
 
 ## **Planteamiento de trabajo**
 
@@ -49,7 +49,7 @@ Buscamos fortalecer la capacidad de respuesta ante desastres y mejorar la comuni
 
 ## **Enfoque de trabajo**
 
-Para abordar este proyecto, proponemos trabajar con dos enfoques: Enfoque 1, centrado en el análisis de datos, y Enfoque 2, enfocado en el uso de machine learning. A continuación, se detallan los enfoques de trabajo propuestos:
+Para abordar este proyecto, trabajaremos con dos enfoques: Enfoque 1, centrado en el análisis de datos, y Enfoque 2, enfocado en el uso de machine learning. A continuación, se detallan los enfoques de trabajo propuestos:
 
 Análisis de datos
 
@@ -63,17 +63,22 @@ Análisis de datos
 
 Machine Learning
 
+- Modelo predictivo de gastos de acuerdo a desastres.
+
+- Modelo clasificador de acuerdo a la peligrosidad de un sismo
+
 En esta parte implementaremos un sistema de alerta sísmica en las zonas rurales de Perú, ya que estas áreas suelen contar con una infraestructura de comunicación limitada, lo que las expone a un mayor riesgo en caso de sismos.
 
 ## **Stack tecnológico**
 
-<img src="./src/GCP.jpg" alt="GCP" width="200"> <img src="./src/python.png" alt="Python" width="200"> <img src="./src/postgre.jpg" alt="Postgresql" width="200"> <img src="./src/powerbi.png" alt="PowerBI" width="200">
+<img src="./src/azure.png" alt="Azure" width="200"> <img src="./src/postgre.jpg" alt="Postgresql" width="200">
+<img src="./src/python.png" alt="Python" width="200"> <img src="./src/powerbi.png" alt="PowerBI" width="200">
 
 ## **Flujo de trabajo**
 
-![Flujo](./src/flujo.jpg)
+![Flujo](./src/flujo.png)
 
-La data ingestada se tratará con Python y Pandas donde se hará un ETL y un EDA, después esta se exportará en archivos CSV que mediante Python y SQLAlchemy se subirá a una base de datos PostgreSQL que vivirá en la nube de GCP (Google Cloud Platform), así mismo la data en tiempo real se subirá desde la web del Instituto Geofísico del Perú (IGP), toda esta base de datos será consumida posteriormente en un dashboard de PowerBI y también en el modelo de Machine Learning.
+La data será ingestada en un datalake en el cual posteriormente se tratará con Python y Pandas por tareas de Airflow donde se hará un ETL de los datos obtenidos, asimsmo se hará una carga incremental y automática de datos desde la página del Instituto Geofísico del Perú (IGP), después esta se exportará a una base de datos PostgreSQL que vivirá en la nube de Azure, toda esta base de datos será consumida posteriormente en un dashboard de PowerBI y también en el modelo de Machine Learning. Asimismo se creará una aplicación web que consumirá la información de la base de datos, pero que también subirá datos de usuarios a esta misma.
 
 ## **Alcance del proyecto**
 
@@ -85,19 +90,19 @@ Al desarrollar este sistema de alerta sísmica, hemos dado especial importancia 
 
 ## **KPIs**
 
-- KPI: Índice de déficit por desastre:
+- Pérdidas Económicas:
   El objetivo de este KPI es calcular los daños económicos y los costos en las zonas rurales más afectadas por los terremotos. Para medir este indicador, realizaremos un análisis exhaustivo de los impactos económicos, incluyendo la evaluación de la infraestructura dañada y otros factores relevantes.
 
-- KPI: Vidas salvadas
+- Reducción de muertes y afectados:
   El objetivo de este KPI es cuantificar cuántas vidas se pueden salvar mediante las implementaciones de nuestro sistema de alerta. Utilizaremos análisis estadísticos para evaluar el impacto de las acciones implementadas en la reducción de la mortalidad relacionada con los sismos. Consideraremos factores como la mejora de las alertas tempranas. Nuestro objetivo es determinar el número estimado de vidas que se pueden salvar como resultado de estas medidas y utilizar esta información para evaluar y mejorar continuamente nuestras estrategias.
 
-- KPI: Tiempo de respuesta del sistema de alarma:
-  El objetivo de este KPI es medir el tiempo que lleva a nuestro sistema de alarma detectar y notificar un sismo a la comunidad. Implementaremos un sistema de monitoreo sísmico en tiempo real y estableceremos métricas para evaluar la rapidez y eficiencia con la que se emiten las alertas. Consideraremos el tiempo transcurrido desde la detección del sismo hasta el envío de los mensajes de texto a las zonas afectadas. Nuestro objetivo es minimizar este tiempo de respuesta para brindar a las personas el máximo tiempo posible para tomar medidas de seguridad.
+- Tiempo de respuesta:
+  El objetivo de este KPI es medir el tiempo que lleva a nuestro sistema de alarma detectar y notificar un sismo a la comunidad. Implementaremos un sistema de monitoreo sísmico en tiempo real y estableceremos métricas para evaluar la rapidez y eficiencia con la que se emiten las alertas. Consideraremos el tiempo transcurrido desde la detección del sismo hasta el envío de los mensajes de texto a las zonas afectadas. Nuestro objetivo es minimizar este tiempo de respuesta de la alerta para brindar a las personas el máximo tiempo posible para tomar medidas de seguridad.
 
-- KPI: Rating o nivel de satisfacción por parte de la comunidad:
+- Nivel de Satisfacción:
   El objetivo de este KPI es evaluar el nivel de satisfacción y percepción de la comunidad en relación con nuestras acciones y comunicaciones durante y después de un evento sísmico. Implementaremos mecanismos para recolectar retroalimentación de las personas afectadas, ya sea a través de encuestas, entrevistas o canales de comunicación directa. Analizaremos los datos recopilados y asignaremos una calificación o rating que refleje el nivel de satisfacción general. Este KPI nos permitirá evaluar y mejorar continuamente nuestros servicios y la efectividad de nuestras estrategias de comunicación.
 
-- KPI: Alcance de la información según la magnitud del sismo:
+- Alcance de la Información:
   El objetivo de este KPI es cuantificar cuántas personas pueden acceder y recibir la información sobre un sismo en función de su magnitud. Estableceremos criterios para clasificar la magnitud de los sismos y analizaremos la capacidad de nuestro sistema de comunicación para llegar a diferentes segmentos de la población. Utilizaremos datos demográficos y de conectividad para estimar el alcance de nuestra información en cada caso. Este KPI nos permitirá evaluar la efectividad de nuestra comunicación y determinar si es necesario ajustar nuestros canales o estrategias para llegar a un público más
 
 ### **Integrantes**
