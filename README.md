@@ -4,16 +4,19 @@
 
 ## **Indice**
 
-- [Introducción](#introducción)
-- [Planteamiento de trabajo](#planteamiento-de-trabajo)
-- [Objetivos generales](#objetivos-generales)
-- [Enfoque de trabajo](#enfoque-de-trabajo)
-- [Stack tecnológico](#stack-tecnológico)
-- [Flujo de trabajo](#flujo-de-trabajo)
-- [Alcance del proyecto](#alcance-del-proyecto)
-- [KPIs](#kpis)
+- [**Introducción**](#introducción)
+- [**Planteamiento de trabajo**](#planteamiento-de-trabajo)
+- [**Objetivos generales**](#objetivos-generales)
+- [**Enfoque de trabajo**](#enfoque-de-trabajo)
+- [**Stack tecnológico**](#stack-tecnológico)
+- [**Flujo de trabajo**](#flujo-de-trabajo)
+- [**Alcance del proyecto**](#alcance-del-proyecto)
+- [**KPIs**](#kpis)
+- [**Integrantes**](#integrantes)
 
 ## **Introducción**
+
+Para correr el proyecto entra al archivo: [Documentación](documentation.md)
 
 Somos Evil Corp una consultora en gestion de desastres (CGD) en alianza con el Instituto Nacional de Defensa de Perú (INDECI), United States Geological Survey (USGS) y la Agencia Meteorológica de Japón (JMA). Estamos trabajando en un proyecto tri-nacional en el cual los objetivos son:
 
@@ -107,8 +110,22 @@ Al desarrollar este sistema de alerta sísmica, hemos dado especial importancia 
 
 ### **Integrantes**
 
-- Clara Camilo (Machine Learning Engineer)
-- Esteban Santillán (Data Analytics)
-- Estefanía Serna (Data Analytics)
-- Hugo Gómez (Data Engineer)
-- Oscar Arias (Data Engineer)
+Clara Camilo <br>
+(Machine Learning Engineer) <br>
+[Perfil de LinkedIn](https://www.linkedin.com/in/clara-camilo-0a9899266/)
+
+Esteban Santillán <br>
+(Data Analytics) <br>
+[Perfil de LinkedIn](https://www.linkedin.com/in/esteban-santillan-suarez-002b60249) <br>
+
+Estefanía Serna <br>
+(Data Analytics)<br>
+[Perfil de LinkedIn](https://www.linkedin.com/mwlite/profile/me?trk=p_mwlite_feed_updates-secondary_nav)
+
+Hugo Gómez<br>
+(Data Engineer) <br>
+[Perfin de LinkedIn](https://www.linkedin.com/in/gomez-tinoco-hugo/)<br>
+
+Oscar Arias <br>
+(Data Engineer) <br>
+[Perfin de LinkedIn](www.linkedin.com/in/oscar-arias-36032072)
