@@ -1,11 +1,11 @@
 # Tarea de automatización, agregar sismo Airflow
 
+import time
 from datetime import datetime, timedelta
 
 import pandas as pd
 import psycopg2
 import requests
-import time
 import unidecode
 from airflow import DAG
 from airflow.models import Variable
@@ -247,6 +247,9 @@ def transformar_data():
 
     df['id_lugar'] = df_lugares['id_lugar']
 
+    # Para la subida a la API
+    Variable.set('estado', df_id.iloc[0]["estado"])
+
     # Preparar la consulta SQL de inserción
     insert_query = "INSERT INTO sismos (fecha, hora, latitud, longitud, profundidad, magnitud, id_lugar) VALUES\n"
     values_query = []
@@ -268,7 +271,38 @@ def transformar_data():
     Variable.set('query', query)
 
 
-def subir_data():
+def subir_sismo_API():
+    query = Variable.get('query', ' ')
+    ultima_fila = eval(Variable.get('api_list', '[]'))
+
+    # Si no hay query es porque no hay datos nuevos
+    if query == ' ' or ultima_fila == []:
+        return print('No hay nada que subir')
+
+    magnitud = ultima_fila[-1]
+    profundidad = ultima_fila[-2]
+    departamento = Variable.get('estado', 'Mar Peruano')
+
+    url = "https://sismos-qagw.onrender.com/recibir_sismo"
+
+    url_con_parametros = f"{url}?mag={magnitud}&prof={profundidad}&departamento={departamento}"
+
+    try:
+        response = requests.post(url_con_parametros)
+
+        if response.status_code == 200:
+            print("Solicitud POST exitosa. Datos enviados:")
+            print("Magnitud:", magnitud)
+            print("Profundidad:", profundidad)
+            print("Ubicación:", departamento)
+        else:
+            print("Error en la solicitud POST. Código de respuesta:", response.status_code)
+
+    except requests.exceptions.RequestException as e:
+        print("Error al realizar la solicitud:", e)
+
+
+def subir_data_a_BD():
     # Recibir la query a subir
     query = Variable.get('query', ' ')
 
@@ -292,8 +326,8 @@ default_args = {
 with DAG(
     'agregar_sismos',
     default_args=default_args,
-    start_date=datetime.now() - timedelta(hours=2),
-    schedule='0 * * * *'
+    start_date=datetime.now() - timedelta(minutes=5),
+    schedule='* * * * *'
 ) as dag:
     extract_task = PythonOperator(
         task_id='extraer_data',
@@ -304,8 +338,12 @@ with DAG(
         python_callable=transformar_data
     )
     load_task = PythonOperator(
-        task_id='subir_data',
-        python_callable=subir_data
+        task_id='actualizar_BD',
+        python_callable=subir_data_a_BD
+    )
+    api_task = PythonOperator(
+        task_id='enviar_alerta',
+        python_callable=subir_sismo_API
     )
 
-    extract_task >> transform_task >> load_task
+    extract_task >> transform_task >> [api_task, load_task]
